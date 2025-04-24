@@ -1,0 +1,214 @@
+import * as React from 'react';
+import { useEffect, useState } from 'react';
+
+// FlexCol component based on your example
+const FlexCol = ({ children, style, ...props }) => {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        ...style
+      }}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+};
+
+export const App = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [todos, setTodos] = useState([]);
+  const [inputText, setInputText] = useState('');
+  const [db, setDb] = useState(null);
+  
+  // Initialize InstantDB
+  useEffect(() => {
+    const initializeDb = async () => {
+      try {
+        console.log("Loading InstantDB from esm.sh...");
+        
+        // Import the modules using esm.sh
+        const instantdbModule = await import("https://esm.sh/@instantdb/core@0.17.31");
+        
+        if (!instantdbModule) {
+          throw new Error("Failed to load InstantDB module");
+        }
+        
+        console.log("InstantDB module loaded:", instantdbModule);
+        
+        // Extract the required functions
+        const { init, i, id } = instantdbModule;
+        
+        console.log("InstantDB loaded successfully, initializing app...");
+
+        // ID for app
+        const APP_ID = "a6dd541a-0089-4f89-a87c-504be472962c";
+
+        // Optional: Declare schema
+        const schema = i.schema({
+          entities: {
+            todos: i.entity({
+              text: i.string(),
+              done: i.boolean(),
+              createdAt: i.date(),
+            }),
+          },
+        });
+
+        // Initialize the database
+        console.log("Initializing InstantDB with appId:", APP_ID);
+        const database = init({ 
+          appId: APP_ID, 
+          schema,
+        });
+
+        setDb({ database, id });
+        
+        console.log("Database initialized, subscribing to queries...");
+
+        // Subscribe to data
+        database.subscribeQuery({ todos: {} }, (resp) => {
+          if (resp.error) {
+            setError(resp.error.message);
+            setLoading(false);
+            return;
+          }
+          
+          if (resp.data) {
+            console.log("Data received:", resp.data);
+            setTodos(resp.data.todos || []);
+            setLoading(false);
+          }
+        });
+        
+      } catch (err) {
+        setError("Error initializing the application: " + err.message);
+        setLoading(false);
+        console.error("Full error:", err);
+      }
+    };
+
+    initializeDb();
+  }, []);
+
+  // Todo operations
+  const addTodo = (text) => {
+    if (!db) return;
+    
+    console.log("Adding todo:", text);
+    db.database.transact(
+      db.database.tx.todos[db.id()].update({
+        text,
+        done: false,
+        createdAt: Date.now(),
+      })
+    );
+  };
+
+  const toggleTodo = (todo) => {
+    if (!db) return;
+    
+    console.log("Toggling todo:", todo.id);
+    db.database.transact(db.database.tx.todos[todo.id].update({ done: !todo.done }));
+  };
+
+  const deleteTodo = (todo) => {
+    if (!db) return;
+    
+    console.log("Deleting todo:", todo.id);
+    db.database.transact(db.database.tx.todos[todo.id].delete());
+  };
+
+  const clearCompleted = () => {
+    if (!db) return;
+    
+    console.log("Clearing completed todos");
+    const completed = todos.filter(todo => todo.done);
+    const txs = completed.map(todo => db.database.tx.todos[todo.id].delete());
+    
+    if (txs.length > 0) {
+      db.database.transact(txs);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const text = inputText.trim();
+    
+    if (text) {
+      addTodo(text);
+      setInputText('');
+    }
+  };
+
+  const remainingCount = todos.filter(todo => !todo.done).length;
+
+  return (
+    <FlexCol
+      style={{
+        width: '100%',
+        height: '100%',
+        margin: '20px',
+        fontFamily: 'sans-serif'
+      }}
+    >
+      <h1>InstantDB Basic Test</h1>
+      
+      {loading && (
+        <div style={{ margin: '20px 0' }}>Loading InstantDB...</div>
+      )}
+      
+      {error && (
+        <div style={{ 
+          color: 'red', 
+          background: '#ffeeee', 
+          padding: '10px', 
+          border: '1px solid #ffcccc',
+          margin: '20px 0'
+        }}>
+          Error: {error}
+        </div>
+      )}
+      
+      {!loading && !error && (
+        <FlexCol style={{ margin: '20px 0' }}>
+          <h2>Todo App</h2>
+          
+          <form onSubmit={handleSubmit}>
+            <input 
+              type="text"
+              placeholder="What needs to be done?"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+            />
+            <button type="submit">Add</button>
+          </form>
+          
+          <ul>
+            {todos.map(todo => (
+              <li key={todo.id}>
+                <input 
+                  type="checkbox"
+                  checked={todo.done}
+                  onChange={() => toggleTodo(todo)}
+                />
+                <span style={{ textDecoration: todo.done ? 'line-through' : 'none' }}>
+                  {todo.text}
+                </span>
+                <button onClick={() => deleteTodo(todo)}>Delete</button>
+              </li>
+            ))}
+          </ul>
+          
+          <div>{remainingCount} items remaining</div>
+          <button onClick={clearCompleted}>Clear Completed</button>
+        </FlexCol>
+      )}
+    </FlexCol>
+  );
+};
+
+export default App;
