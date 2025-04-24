@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
 import '../public/globals.css'
 import { FlexCol } from './utils.jsx'
-// @ts-ignore: external module without types
-import { Button, Badge, Input } from 'https://cdn.jsdelivr.net/npm/shadcdn/+esm'
+import { Button, Badge, Input } from 'shadcdn'
 
 export var App = () => {
   const [todos, setTodos] = useState([])
